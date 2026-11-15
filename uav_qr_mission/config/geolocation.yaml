@@ -1,0 +1,32 @@
+# Positions: metres; RPY: radians. Restart the mission node after editing.
+# Geometry follows /home/dlab/test_ws/src/uav_tf_test/config/tf.yaml.
+geolocation:
+  fix_topic: /mavros/global_position/raw/fix
+  attitude_topic: /mavros/imu/data
+  base_frame: uav_base_link                 # FLU: x forward, y left, z up
+  camera_frame: uav_camera_optical_frame    # x right, y down, z forward
+  rtk_frame: uav_rtk_ant1                   # raw/fix measures the main antenna
+  # Disable if another production node already owns these static TF children.
+  publish_static_tf: true
+  # Nearest available sample to the QR depth measurement; no latest-time fallback.
+  max_fix_dt_s: 0.2
+  max_attitude_dt_s: 0.1
+  cache_duration_s: 5.0
+  # MAVROS attitude is body FLU -> earth ENU; raw/fix height is WGS84 ellipsoid.
+  static_transforms:
+    - parent: uav_base_link
+      child: uav_camera
+      xyz: [-0.105, 0.0, -0.17]
+      rpy: [0.0, 1.5707963267948966, 0.0]
+    - parent: uav_camera
+      child: uav_camera_optical_frame
+      xyz: [0.0, 0.0, 0.0]
+      rpy: [-1.5707963267948966, 0.0, -1.5707963267948966]
+    - parent: uav_base_link
+      child: uav_rtk_ant1
+      xyz: [0.0, 0.1585, 0.105]
+      rpy: [0.0, 0.0, 0.0]
+    - parent: uav_base_link
+      child: uav_rtk_ant2
+      xyz: [0.0, -0.1585, 0.105]
+      rpy: [0.0, 0.0, 0.0]

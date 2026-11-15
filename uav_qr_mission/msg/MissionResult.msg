@@ -11,3 +11,13 @@ geometry_msgs/PointStamped position
 bool report_tf_valid
 geometry_msgs/TransformStamped report_tf
 bool complete
+# First valid WGS84 position of position_target_id in this mission, independent
+# of arena position. Header stamp is the QR depth measurement time.
+# latitude/longitude: degrees; altitude: metres above the WGS84 ellipsoid.
+# frame_id=wgs84 is a geodetic label, NOT a Cartesian TF frame.
+bool wgs84_position_valid
+sensor_msgs/NavSatFix wgs84_position
+string wgs84_status
+# Exact input samples selected nearest to the QR measurement time.
+time wgs84_fix_stamp
+time wgs84_attitude_stamp

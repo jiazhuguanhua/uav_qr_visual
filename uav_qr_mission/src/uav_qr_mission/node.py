@@ -8,10 +8,12 @@ import time
 import rospy
 import tf2_ros
 from geometry_msgs.msg import PointStamped
+from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus
 from tf2_geometry_msgs import do_transform_point
 from uav_odin_qr.msg import DetectionArray, QrTransformArray
 
 from .mission import Mission
+from .geolocation_ros import Geolocation
 from .msg import MissionResult
 from .srv import SetTask, SetTaskResponse
 
@@ -31,6 +33,7 @@ class MissionNode:
         self.buffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.buffer)
         self.broadcaster = tf2_ros.TransformBroadcaster()
+        self.geolocation = Geolocation(rospy.get_param('~geolocation'))
         self.publisher = rospy.Publisher('~result', MissionResult, queue_size=1, latch=True)
         self.frames = {}
         self.highest_image_stamp = 0
@@ -44,6 +47,10 @@ class MissionNode:
         self.targets_sub = rospy.Subscriber(
             rospy.get_param('~tf_targets_topic', '/uav_odin_qr/tf_targets'),
             QrTransformArray, self.on_targets, queue_size=8)
+        self.fix_sub = rospy.Subscriber(
+            self.geolocation.fix_topic, NavSatFix, self.on_fix, queue_size=100)
+        self.attitude_sub = rospy.Subscriber(
+            self.geolocation.attitude_topic, Imu, self.on_attitude, queue_size=200)
         self.timer = rospy.Timer(rospy.Duration(0.05), self.tick)
 
     def reset_task(self):
@@ -54,6 +61,21 @@ class MissionNode:
         self.report_tf = None
         self.report_received = 0.0
         self.position_candidate = None
+        self.wgs84_position = None
+        self.wgs84_candidate = None
+        self.wgs84_status = 'WAIT_OBSERVATION' if self.mission.id else 'WAIT_TASK'
+
+    def on_fix(self, message):
+        with self.lock:
+            self.geolocation.fixes.add(message)
+            if self.try_wgs84():
+                self.publish()
+
+    def on_attitude(self, message):
+        with self.lock:
+            self.geolocation.attitudes.add(message)
+            if self.try_wgs84():
+                self.publish()
 
     def set_task(self, request):
         with self.lock:
@@ -75,6 +97,15 @@ class MissionNode:
         if self.report_tf is not None:
             result.report_tf = self.report_tf
             result.report_tf_valid = True
+        result.wgs84_status = self.wgs84_status
+        if self.wgs84_position is not None:
+            result.wgs84_position, result.wgs84_fix_stamp, result.wgs84_attitude_stamp = self.wgs84_position
+            result.wgs84_position_valid = True
+        else:
+            result.wgs84_position.status.status = NavSatStatus.STATUS_NO_FIX
+            result.wgs84_position.latitude = math.nan
+            result.wgs84_position.longitude = math.nan
+            result.wgs84_position.altitude = math.nan
         result.complete = bool(self.mission.id and all(result.found) and result.position_valid)
         if not self.mission.id:
             result.status = 'WAIT_TASK'
@@ -153,6 +184,25 @@ class MissionNode:
         if self.position is None and self.position_candidate is None:
             self.position_candidate = (received, report)
             self.try_position()
+        if self.wgs84_position is None and self.wgs84_candidate is None:
+            self.wgs84_candidate = (received, report)
+            self.try_wgs84()
+
+    def try_wgs84(self):
+        if self.wgs84_candidate is None:
+            return False
+        received, report = self.wgs84_candidate
+        previous = self.wgs84_status
+        if time.monotonic() - received > OBSERVATION_TIMEOUT:
+            self.wgs84_candidate = None
+            self.wgs84_status = 'OBSERVATION_EXPIRED'
+        else:
+            position, self.wgs84_status = self.geolocation.locate(report)
+            if position is not None:
+                self.wgs84_position = position
+                self.wgs84_candidate = None
+                return True
+        return previous != self.wgs84_status
 
     def try_position(self):
         if self.position_candidate is None:
@@ -183,6 +233,7 @@ class MissionNode:
     def tick(self, _event):
         with self.lock:
             changed = self.try_position()
+            changed = self.try_wgs84() or changed
             if self.report_tf is not None and time.monotonic() - self.report_received > OBSERVATION_TIMEOUT:
                 self.report_tf = None
                 changed = True
