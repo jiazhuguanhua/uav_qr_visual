@@ -1,0 +1,2 @@
+# Install into the ODIN QR workspace only. Use the Jetson's system Python ABI.
+zxing-cpp==2.2.0

@@ -1,0 +1,14 @@
+<launch>
+  <arg name="image_topic" default="/odin1/image/undistorted"/>
+  <arg name="query_service" default="/uav_oyo/query_pixel"/>
+  <arg name="query_timeout_s" default="0.8"/>
+  <arg name="camera_frame" default=""/>
+  <arg name="decoder_path" default="$(env HOME)/devices_ws/.uav_odin_qr_deps"/>
+  <node pkg="uav_odin_qr" type="uav_odin_qr_node" name="uav_odin_qr" output="screen">
+    <env name="PYTHONPATH" value="$(arg decoder_path):$(optenv PYTHONPATH)"/>
+    <param name="image_topic" value="$(arg image_topic)"/>
+    <param name="query_service" value="$(arg query_service)"/>
+    <param name="query_timeout_s" value="$(arg query_timeout_s)"/>
+    <param name="camera_frame" type="str" value="$(arg camera_frame)"/>
+  </node>
+</launch>

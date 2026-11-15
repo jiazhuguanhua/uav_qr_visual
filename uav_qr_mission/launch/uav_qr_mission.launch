@@ -1,0 +1,10 @@
+<launch>
+  <arg name="result_frame" default="arena"/>
+  <arg name="detections_topic" default="/uav_odin_qr/detections"/>
+  <arg name="tf_targets_topic" default="/uav_odin_qr/tf_targets"/>
+  <node pkg="uav_qr_mission" type="uav_qr_mission_node" name="uav_qr_mission" output="screen">
+    <param name="result_frame" type="str" value="$(arg result_frame)"/>
+    <param name="detections_topic" value="$(arg detections_topic)"/>
+    <param name="tf_targets_topic" value="$(arg tf_targets_topic)"/>
+  </node>
+</launch>

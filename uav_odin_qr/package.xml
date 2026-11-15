@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>uav_odin_qr</name>
+  <version>0.1.0</version>
+  <description>QR detection on rectified ODIN images with same-frame OYO depth.</description>
+  <maintainer email="maintainers@todo.todo">DroneLab</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>message_generation</build_depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>uav_oyo</depend>
+  <exec_depend>message_runtime</exec_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <test_depend>tf2_msgs</test_depend>
+</package>

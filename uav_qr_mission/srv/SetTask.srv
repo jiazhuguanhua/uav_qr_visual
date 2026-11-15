@@ -1,0 +1,6 @@
+string mission_id
+string[] target_ids
+string position_target_id
+---
+bool accepted
+string status
