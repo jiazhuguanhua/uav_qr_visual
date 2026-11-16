@@ -1,6 +1,8 @@
 string mission_id
 string[] target_ids
 string position_target_id
+# True: only explicit stationary captures may update task progress/positions.
+bool capture_only
 ---
 bool accepted
 string status

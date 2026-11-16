@@ -10,6 +10,7 @@ import numpy as np
 import rospy
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
+from std_msgs.msg import Bool, Time as TimeMessage
 from tf2_msgs.msg import TFMessage
 from uav_oyo.srv import QueryPixel, QueryPixelResponse
 
@@ -184,8 +185,43 @@ def main():
     assert target.center_u > 200 and target.transform.child_frame_id == children[1]
     only_tf, = tf_messages.get(timeout=3).transforms
     assert only_tf.child_frame_id == children[1]
+
+    # Exercise the real worker's pause/trigger/resume path, not just its callback.
+    mode = 'good'
+    while not requests.empty():
+        requests.get_nowait()
+    continuous = rospy.Publisher('/uav_odin_qr/continuous', Bool, queue_size=1)
+    trigger = rospy.Publisher('/uav_odin_qr/capture_after', TimeMessage, queue_size=1)
+    until = time.monotonic()+3
+    while not continuous.get_num_connections() or not trigger.get_num_connections():
+        assert time.monotonic() < until
+        time.sleep(.02)
+
+    def publish_only(value):
+        message = bridge.cv2_to_imgmsg(cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB), encoding='rgb8')
+        message.header.stamp = value
+        message.header.frame_id = frame
+        publisher.publish(message)
+        time.sleep(.2)
+
+    continuous.publish(Bool(False))
+    time.sleep(.1)
+    stamp += rospy.Duration(2)
+    publish_only(stamp)
+    assert outputs.empty() and requests.empty(), 'Paused camera must not decode/query depth'
+    trigger.publish(TimeMessage(stamp+rospy.Duration(2)))
+    time.sleep(.1)
+    publish_only(stamp+rospy.Duration(1))
+    assert outputs.empty() and requests.empty(), 'Trigger must reject pre-window RGB'
+    result, = send(stamp+rospy.Duration(2), gray, frame)[0]
+    assert result.depth_valid and requests.get_nowait().image_stamp == stamp+rospy.Duration(2)
+    publish_only(stamp+rospy.Duration(3))
+    assert outputs.empty() and requests.empty(), 'One trigger must process exactly one frame'
+    continuous.publish(Bool(True))
+    time.sleep(.1)
+    assert send(stamp+rospy.Duration(4), gray, frame)[0][0].depth_valid
     service.shutdown()
-    print('PASS: exact stamps, depth failures and recovery, multiple QR children on /tf')
+    print('PASS: exact stamps, depth failures/recovery, multiple TF children, pause/fresh-trigger/resume')
 
 
 if __name__ == '__main__':

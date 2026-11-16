@@ -1,0 +1,10 @@
+<launch>
+  <arg name="service" default="/ugv/qr_display/update"/>
+  <arg name="timeout_s" default="2.0"/>
+  <arg name="retry_s" default="1.0"/>
+  <node pkg="uav_qr_mission" type="qr_report_sender" name="qr_report_sender" output="screen">
+    <param name="service" value="$(arg service)"/>
+    <param name="timeout_s" value="$(arg timeout_s)"/>
+    <param name="retry_s" value="$(arg retry_s)"/>
+  </node>
+</launch>

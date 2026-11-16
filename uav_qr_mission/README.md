@@ -1,5 +1,42 @@
 # uav_qr_mission
 
+## 停点扫描与小车上报（新增）
+
+任务现在为三个注册码分别保存 WGS84 位置。`result.targets[]` 的每项包含 `content`、
+`is_drop_target`、`found`、`position_valid`、`position`、采样时间、状态和版本。
+`all_localized` 表示三个码都定位成功；原来的 `wgs84_position` 等单目标字段继续对应投放码。
+旧 `complete` 仍保留 arena 条件，不用于停点扫描的结束判定。
+
+`SetTask` 新增 `capture_only`：
+
+- `false`：兼容原来的持续识别任务，每个处理帧都可更新注册目标。
+- `true`：只接受显式停点采集。飞行期间通过标准话题暂停视觉解码和深度查询，
+  接受采集后触发下一张图像；同一采集最多使用一帧。
+
+```bash
+rosservice call /uav_qr_mission/set_task \
+  "{mission_id: 'survey_01', target_ids: ['QR001','QR002','QR003'], position_target_id: 'QR003', capture_only: true}"
+```
+
+`/uav_qr_mission/capture` 使用 `CaptureQr`，是立即返回的控制服务：
+`command=START`、任务 ID、唯一本点 capture_id、稳定延时结束后的 `not_before` 和超时秒数。
+通过 `result.capture_id/status/done/success/stamp` 获取完成结果。
+图像与深度测量时间均必须进入新窗口；收到旧深度时重新触发下一帧。
+空检测也是完成了一次采集，不等于找齐目标。定位等待只在有界窗口内进行。
+
+取消使用同一服务的 `command=CANCEL`；取消 ID 会被记住，防止迟到的 START 再次打开窗口。
+时间过期的请求拒绝。接收图像与求位置的工作不阻塞控制服务。
+`/finish_survey` 按任务 ID 冻结结果，正在采集时拒绝冻结；冻结后不能再启动采集。
+
+`result.header.stamp` 是 2 Hz 发布心跳，与各二维码的测量时间分开。
+`geolocation_input_status` 检查当前原始 RTK/IMU 是否就绪；不是保存坐标的年龄。
+目标离开视野后保存位置仍有效，第一次有效位置保存后不自动追踪移动目标。
+
+`qr_report_sender.launch` 将新定位结果通过服务送到小车，支持单条、批量、超时重试。
+接口、幂等性及 FKIE 接入说明见 [小车服务合同](docs/ugv_display_service.md)。
+maxt 的 `qr_stop_survey.launch` 提供九点停顿扫描与最后 5 m 等待的完整 BT。
+新接口改变了 ROS MD5，发布/订阅/服务两端须全部使用新构建并重启。
+
 ROS Noetic 任务节点。接收三个目标码和其中一个定位目标，累计找码进度，发布固定的相机到二维码 TF，并独立保存定位目标的场地坐标和 WGS84 经纬高。
 
 | 接口 | 消息类型 | 用途 |

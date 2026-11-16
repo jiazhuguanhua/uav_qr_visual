@@ -1,0 +1,5 @@
+string mission_id
+---
+bool accepted
+string status
+uav_qr_mission/MissionResult result

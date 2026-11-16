@@ -21,3 +21,15 @@ string wgs84_status
 # Exact input samples selected nearest to the QR measurement time.
 time wgs84_fix_stamp
 time wgs84_attitude_stamp
+# Publication heartbeat, distinct from measurement timestamps in each position.
+std_msgs/Header header
+uav_qr_mission/QrTargetResult[] targets
+bool all_localized
+bool survey_finished
+string capture_id
+string capture_status
+bool capture_done
+bool capture_success
+time capture_stamp
+# Readiness of raw RTK + IMU near publication time (not saved-target freshness).
+string geolocation_input_status

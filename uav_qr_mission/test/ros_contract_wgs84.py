@@ -69,7 +69,7 @@ class Wgs84Contract(unittest.TestCase):
         type(self).sequence += 1
         self.stamp = rospy.Time(1000 + self.sequence * 10)
         self.mission_id = 'contract_{}'.format(self.sequence)
-        response = self.set_task(self.mission_id, ['A', 'B', 'C'], 'A')
+        response = self.set_task(self.mission_id, ['A', 'B', 'C'], 'A', False)
         self.assertTrue(response.accepted)
         self.wait(lambda r: r is not None and r.mission_id == self.mission_id)
 
@@ -146,13 +146,13 @@ class Wgs84Contract(unittest.TestCase):
         self.assertFalse(result.position_valid)  # WGS84 does not depend on arena TF.
         self.assertFalse(result.complete)       # Legacy completion still requires arena.
         self.assertTrue(all(result.found))
-        self.assertEqual(self.set_task(self.mission_id, ['A', 'B', 'C'], 'A').status, 'ALREADY_ACTIVE')
+        self.assertEqual(self.set_task(self.mission_id, ['A', 'B', 'C'], 'A', False).status, 'ALREADY_ACTIVE')
         self.stamp += rospy.Duration(1)
         self.observe(contents=())
         result = self.wait(lambda r: not r.report_tf_valid)
         self.assertTrue(result.wgs84_position_valid)
         self.assertEqual(result.wgs84_status, 'VALID')
-        self.set_task(self.mission_id+'_new', ['A', 'B', 'C'], 'A')
+        self.set_task(self.mission_id+'_new', ['A', 'B', 'C'], 'A', False)
         result = self.wait(lambda r: r.mission_id.endswith('_new'))
         self.assertFalse(result.wgs84_position_valid)
         self.assertEqual(result.wgs84_status, 'WAIT_OBSERVATION')

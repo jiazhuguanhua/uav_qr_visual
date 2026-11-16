@@ -1,0 +1,7 @@
+# UGV display endpoint. Accept one or multiple targets atomically.
+# On retry, upsert by mission_id/content/revision; never append duplicate rows.
+uav_qr_mission/QrReport report
+---
+# True means ALL records were accepted by the display backend.
+bool accepted
+string status

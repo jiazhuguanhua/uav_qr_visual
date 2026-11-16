@@ -10,6 +10,7 @@ import tf2_ros
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Image
+from std_msgs.msg import Bool, Time as TimeMessage
 from uav_oyo.srv import QueryPixelResponse
 
 from .decoder import decode_centers
@@ -38,17 +39,39 @@ class OdinQr:
         self.condition = threading.Condition()
         self.pending = None
         self.stopped = False
+        self.triggered = False
+        self.capture_after = 0
         self.subscriber = rospy.Subscriber(
             image_topic, Image, self.on_image, queue_size=1, buff_size=16 * 1024 * 1024
         )
+        # Standard messages avoid a dependency cycle with uav_qr_mission.
+        self.mode_sub = rospy.Subscriber('~continuous', Bool, self.on_mode, queue_size=1)
+        self.capture_sub = rospy.Subscriber('~capture_after', TimeMessage, self.on_capture, queue_size=1)
         rospy.on_shutdown(self.stop)
         rospy.loginfo('ODIN QR input %s, OYO %s, output %s',
                       image_topic, query_service, self.publisher.resolved_name)
 
     def on_image(self, image):
         with self.condition:
+            if self.triggered:
+                if not self.capture_after or image.header.stamp.to_nsec() < self.capture_after:
+                    return
+                # Exactly one newly acquired image per trigger; never reuse pending RGB.
+                self.capture_after = 0
             self.pending = (image, time.monotonic())
             self.condition.notify()
+
+    def on_mode(self, message):
+        with self.condition:
+            self.triggered = not message.data
+            self.capture_after = 0
+            self.pending = None
+
+    def on_capture(self, message):
+        with self.condition:
+            self.triggered = True
+            self.capture_after = message.data.to_nsec()  # zero cancels a pending exposure
+            self.pending = None
 
     def stop(self):
         with self.condition:
