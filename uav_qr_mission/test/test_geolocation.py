@@ -13,7 +13,9 @@ from uav_qr_mission.geolocation import (
 
 def config():
     path = Path(__file__).resolve().parents[1] / 'config' / 'geolocation.yaml'
-    return yaml.safe_load(path.read_text())['geolocation']
+    cfg = yaml.safe_load(path.read_text())['geolocation']
+    cfg['gps_clock_bridge'] = False  # synthetic tests already use one clock
+    return cfg
 
 
 class GeolocationMathTest(unittest.TestCase):

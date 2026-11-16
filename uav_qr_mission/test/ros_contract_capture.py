@@ -111,7 +111,7 @@ class CaptureContract(unittest.TestCase):
 
     def test_timeout_and_cancel_ignore_later_frames(self):
         self.assertTrue(self.request('no_image',timeout=.15).accepted)
-        self.wait(lambda r:r.capture_done and r.capture_status == 'TIMEOUT')
+        self.wait(lambda r:r.capture_done and r.capture_status == 'TIMEOUT_WAIT_FRAME')
         self.frame()
         time.sleep(.1)
         self.assertFalse(any(self.latest.found))

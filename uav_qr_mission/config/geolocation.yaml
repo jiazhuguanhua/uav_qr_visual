@@ -9,6 +9,8 @@ geolocation:
   # Disable if another production node already owns these static TF children.
   publish_static_tf: true
   # Nearest available sample to the QR depth measurement; no latest-time fallback.
+  # GPS epoch -> FCU boot -> ROS; preserves original GPS stamps in results.
+  gps_clock_bridge: true
   max_fix_dt_s: 0.2
   max_attitude_dt_s: 0.1
   cache_duration_s: 5.0

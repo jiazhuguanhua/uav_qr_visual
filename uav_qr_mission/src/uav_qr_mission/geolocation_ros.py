@@ -9,6 +9,7 @@ import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 
+from .clock_bridge import ClockBridge
 from .geolocation import Installation, normalize_quaternion, offset_wgs84
 
 
@@ -38,6 +39,7 @@ class SampleCache:
 
 class Geolocation:
     def __init__(self, config):
+        self.clock_bridge = ClockBridge() if config.get('gps_clock_bridge', False) else None
         self.installation = Installation(config)
         self.fix_topic = config['fix_topic']
         self.attitude_topic = config['attitude_topic']
@@ -74,10 +76,15 @@ class Geolocation:
         if report.header.frame_id != self.installation.camera:
             return None, 'CAMERA_FRAME_MISMATCH'
         stamp = report.header.stamp.to_nsec()
-        fix = self.fixes.nearest(stamp)
+        offset = 0
+        if self.clock_bridge is not None:
+            offset, status = self.clock_bridge.offset()
+            if offset is None:
+                return None, status
+        fix = self.fixes.nearest(stamp-offset)
         if fix is None:
             return None, 'WAIT_FIX'
-        if abs((fix.header.stamp-report.header.stamp).to_sec()) > self.max_fix_dt:
+        if abs(fix.header.stamp.to_nsec()+offset-stamp) > round(self.max_fix_dt*1e9):
             return None, 'FIX_TIME_MISMATCH'
         if fix.status.status < NavSatStatus.STATUS_FIX:
             return None, 'FIX_INVALID'

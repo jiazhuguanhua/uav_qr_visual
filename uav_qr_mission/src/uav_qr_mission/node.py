@@ -1,12 +1,14 @@
 """Registered QR registry, stationary capture windows, and measurement-time positions."""
 import copy
 import math
+import struct
 import threading
 import time
 
 import rospy
 import tf2_ros
 from geometry_msgs.msg import PointStamped, TransformStamped
+from mavros_msgs.msg import Mavlink, TimesyncStatus
 from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus
 from std_msgs.msg import Bool, Time as TimeMessage
 from tf2_geometry_msgs import do_transform_point
@@ -34,6 +36,8 @@ class MissionNode:
         self.listener = tf2_ros.TransformListener(self.buffer)
         self.broadcaster = tf2_ros.TransformBroadcaster()
         self.geolocation = Geolocation(rospy.get_param('~geolocation'))
+        self.clock_system_id = int(rospy.get_param('~clock_system_id', 1))
+        self.clock_component_id = int(rospy.get_param('~clock_component_id', 1))
         self.publisher = rospy.Publisher('~result', MissionResult, queue_size=1, latch=True)
         self.vision_mode = rospy.Publisher('/uav_odin_qr/continuous', Bool, queue_size=1, latch=True)
         self.vision_capture = rospy.Publisher('/uav_odin_qr/capture_after', TimeMessage, queue_size=1)
@@ -53,7 +57,27 @@ class MissionNode:
             rospy.Subscriber(self.geolocation.fix_topic, NavSatFix,
                              self.on_fix, queue_size=100),
             rospy.Subscriber(self.geolocation.attitude_topic, Imu, self.on_attitude, queue_size=200)]
+        if self.geolocation.clock_bridge is not None:
+            self.subs.extend([
+                rospy.Subscriber('/mavros/timesync_status', TimesyncStatus, self.on_clock_sync, queue_size=10),
+                rospy.Subscriber('/mavlink/from', Mavlink, self.on_system_time, queue_size=100)])
         self.timer = rospy.Timer(rospy.Duration(0.05), self.tick)
+
+    def on_clock_sync(self, message):
+        with self.lock:
+            self.geolocation.clock_bridge.update_sync(message.estimated_offset_ns,
+                                                      message.round_trip_time_ms)
+
+    def on_system_time(self, message):
+        # Only the configured autopilot's SYSTEM_TIME is an epoch/boot anchor.
+        if (message.msgid != 2 or message.sysid != self.clock_system_id or
+                message.compid != self.clock_component_id or message.framing_status != message.FRAMING_OK):
+            return
+        payload = b''.join(struct.pack('<Q', v) for v in message.payload64)
+        # MAVLink 2 may truncate trailing zero bytes. Restore the wire layout.
+        epoch_us, boot_ms = struct.unpack_from('<QI', payload.ljust(12, b'\0'))
+        with self.lock:
+            self.geolocation.clock_bridge.update_system(epoch_us, boot_ms)
 
     def reset_task(self):
         self.frames = {}
@@ -154,6 +178,8 @@ class MissionNode:
     def end_capture(self, success, status):
         self.capture_done, self.capture_success = True, success
         self.capture_status = status
+        rospy.loginfo('QR capture %s: %s, image_stamp=%s',
+                      self.capture_id, status, self.capture_stamp)
         self.frames.clear()
         for content in self.candidates:
             self.records[content].status = status
@@ -245,7 +271,7 @@ class MissionNode:
                         or key < self.capture_after):
                     return
                 if time.monotonic() >= self.capture_deadline:
-                    self.end_capture(False, 'TIMEOUT')
+                    self.end_capture(False, 'TIMEOUT_' + self.capture_status)
                     self.publish()
                     return
             if key <= self.last_paired_stamp:
@@ -365,7 +391,7 @@ class MissionNode:
             changed = self.try_locations() or changed
             now = time.monotonic()
             if self.capture_id and not self.capture_done and now >= self.capture_deadline:
-                self.end_capture(False, 'TIMEOUT')
+                self.end_capture(False, 'TIMEOUT_' + self.capture_status)
                 changed = True
             if self.report_tf is not None and now-self.report_received > OBSERVATION_TIMEOUT:
                 self.report_tf = None

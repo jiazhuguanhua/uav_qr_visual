@@ -185,3 +185,27 @@ python3 /path/to/ws/src/uav_qr_mission/test/ros_contract_wgs84.py -v
 
 测试覆盖杆臂和姿态旋转、WGS84 正反算、时间边界、过期/无效输入、延迟数据恢复、同内容歧义、
 静态 TF、保存/重置，以及 `arena` 定位和原任务完成逻辑。集成测试使用模拟定位，不代表实机 RTK 精度验收。
+
+### GPS 与电脑时钟偏差（2026-11-16）
+
+`geolocation/gps_clock_bridge: true` 将 GPS epoch 测量时间换算到电脑 ROS 时间后再匹配图像：
+
+```
+GPS epoch -> 减去 SYSTEM_TIME(epoch - boot) -> 飞控 boot
+          -> 加上 MAVROS TIMESYNC estimated_offset -> 电脑 ROS
+```
+
+仅订阅 `/mavlink/from` 的 `SYSTEM_TIME` 与 `/mavros/timesync_status`，不修改 GPS、电脑或飞控时钟，也不修改 MAVROS。GPS 原始 `header.stamp` 仍保存在结果的 `fix_stamp`；IMU 已经由 MAVROS 换算到 ROS 时间，不重复补偿。该配置要求 raw/fix 保留 GPS epoch（当前已修正的 MAVROS 即如此）；若上游已经把 GPS 转成电脑时间，应关闭此开关。
+
+只接受 RTT <= 10 ms 的同步观测，至少三条一致的 SYSTEM_TIME 后才就绪；同步状态超过 3 s、时间锚超过 5 s 或偏移跳变时停止配对并重新收敛。不使用消息接收时刻替代采样时刻。`max_fix_dt_s: 0.2` 约束换算后的采样差，不是 GPS 与电脑的绝对钟差。默认飞控 ID 为 1/1，可用任务节点参数 `clock_system_id`、`clock_component_id` 调整。
+
+时间映射不替代图像输入。`TIMEOUT_WAIT_FRAME` 表示没收到符合窗口要求、时间戳一致的 detections/tf_targets 对；`TIMEOUT_LOCALIZING` 表示已收到图像对但定位未完成。行为树会打印具体采集失败状态，起飞前也会打印 `WAIT_CLOCK_SYNC`、`WAIT_CLOCK_ANCHOR`、`FIX_TIME_MISMATCH` 等等待原因。失败后仍按原策略定点等待，不自动继续投放或改变飞行模式。
+
+只读地面检查（不会发布消息或调用飞控服务）：
+
+```bash
+source /home/dlab/qr_visual_release_20261114_Q1tLWg/env.sh
+python3 "$QR_RELEASE/ws/src/uav_qr_mission/test/ground_clock_probe.py"
+```
+
+修改 Python 和 YAML 后重启二维码任务节点生效；maxt 日志修改已重新编译。不要重复启动 `/uav_qr_mission`：`qr_ground.launch` 已包含该节点，此时巡检入口保持 `start_qr_mission:=false`。
