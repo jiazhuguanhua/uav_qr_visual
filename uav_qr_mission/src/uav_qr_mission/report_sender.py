@@ -38,11 +38,14 @@ class ReportSender:
         self.timeout = float(rospy.get_param('~timeout_s', 2.0))
         self.retry = float(rospy.get_param('~retry_s', 1.0))
         self.startup_timeout = float(rospy.get_param('~startup_timeout_s', 10.0))
-        if not all(math.isfinite(v) and 0 < v <= 30 for v in (self.timeout, self.retry, self.startup_timeout)):
+        self.refresh = float(rospy.get_param('~refresh_s', 10.0))
+        if not all(math.isfinite(v) and 0 < v <= 30 for v in
+                   (self.timeout, self.retry, self.startup_timeout, self.refresh)):
             raise ValueError('Report timeouts must be finite and in (0, 30] seconds')
         self.lock = threading.Lock()
         self.latest = None
         self.acknowledged = {}
+        self.last_delivery = 0.0
         self.publisher = rospy.Publisher('~status', QrReportStatus, queue_size=1, latch=True)
         self.subscriber = rospy.Subscriber('/uav_qr_mission/result', MissionResult,
                                            self.receive, queue_size=1)
@@ -55,15 +58,19 @@ class ReportSender:
         with self.lock:
             if self.latest is None or message.mission_id != self.latest.mission_id:
                 self.acknowledged.clear()
+                self.last_delivery = 0.0
             self.latest = message
 
     def pending(self):
         with self.lock:
             if self.latest is None or not self.latest.mission_id:
                 return None
-            # Complete snapshots allow a sender restart to recover missed reports.
-            targets = [copy.deepcopy(t) for t in self.latest.targets
-                       if t.position_valid and t.revision > self.acknowledged.get(t.content, 0)]
+            valid = [t for t in self.latest.targets if t.position_valid]
+            changed = any(t.revision > self.acknowledged.get(t.content, 0) for t in valid)
+            # A restarted screen may have lost RAM even though it previously ACKed.
+            # Send full snapshots on change and periodically, without remeasuring.
+            due = time.monotonic()-self.last_delivery >= self.refresh
+            targets = copy.deepcopy(valid) if changed or due else []
             return QrReport(mission_id=self.latest.mission_id, targets=targets)
 
     def publish_status(self, status):
@@ -143,8 +150,10 @@ class ReportSender:
                 with self.lock:
                     # Never acknowledge an old task against a newer task's registry.
                     if accepted and self.latest.mission_id == report.mission_id:
+                        self.last_delivery = time.monotonic()
                         for target in report.targets:
-                            self.acknowledged[target.content] = target.revision
+                            self.acknowledged[target.content] = max(
+                                target.revision, self.acknowledged.get(target.content, 0))
                 self.publish_status('ACKNOWLEDGED' if accepted else status)
                 if not accepted:
                     rospy.logwarn_throttle(5, 'UGV QR display pending: %s', status)

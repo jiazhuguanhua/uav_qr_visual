@@ -53,7 +53,7 @@ def contract(path):
     path.write_text('')
     output = path.with_suffix('.log').open('w')
     backend = None
-    sender = subprocess.Popen(['rosrun','uav_qr_mission','qr_report_sender'],
+    sender = subprocess.Popen(['rosrun','uav_qr_mission','qr_report_sender','_refresh_s:=2.0'],
                               stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
     def start_receiver():
         return subprocess.Popen([sys.executable,__file__,'--receiver','--output',str(path)],
@@ -79,6 +79,11 @@ def contract(path):
         publisher.publish(first)
         wait(lambda: latest[0] is not None and latest[0].acknowledged_ids == ['A'])
         stop(backend)
+        backend = start_receiver()
+        # No new detections: periodic full snapshots must rebuild a restarted screen.
+        wait(lambda: sum(json.loads(line)['contents'] == ['A']
+                         for line in path.read_text().splitlines()) >= 2)
+        stop(backend)
         publisher.publish(message)
         wait(lambda: latest[0] is not None and set(latest[0].pending_ids) == {'B','C'})
         # A new process has a new ROS service URI. The warm sender must resolve it again.
@@ -86,7 +91,7 @@ def contract(path):
         wait(lambda: latest[0] is not None and set(latest[0].acknowledged_ids) == {'A','B','C'})
         entries = [json.loads(line) for line in path.read_text().splitlines()]
         assert any(e['contents'] == ['A'] for e in entries), entries
-        assert any(set(e['contents']) == {'B','C'} for e in entries), entries
+        assert any(set(e['contents']) == {'A','B','C'} for e in entries), entries
         assert all(stamp > 0 for e in entries for stamp in e['stamps'])
         print('PASS: single report, batch report, receiver restart/URI refresh:',entries)
     finally:

@@ -22,7 +22,7 @@ class Wgs84Contract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         uri = urlparse(os.environ.get('ROS_MASTER_URI', ''))
-        if uri.hostname not in ('127.0.0.1', 'localhost', '::1'):
+        if uri.hostname not in ('127.0.0.1', 'localhost', '::1') or uri.port == 11311:
             raise RuntimeError('Use an isolated loopback ROS master, never the vehicle master')
         rospy.init_node('wgs84_contract', anonymous=True)
         cls.condition = threading.Condition()

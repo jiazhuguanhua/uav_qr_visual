@@ -17,7 +17,8 @@ from uav_qr_mission.srv import SetTask, CaptureQr, CaptureQrRequest, FinishSurve
 class CaptureContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if urlparse(os.environ.get('ROS_MASTER_URI', '')).hostname not in ('127.0.0.1', 'localhost'):
+        uri = urlparse(os.environ.get('ROS_MASTER_URI', ''))
+        if uri.hostname not in ('127.0.0.1', 'localhost') or uri.port == 11311:
             raise RuntimeError('Tests must not connect to the aircraft ROS master')
         rospy.init_node('capture_contract', anonymous=True)
         cls.latest = None
